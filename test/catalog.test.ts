@@ -138,6 +138,8 @@ describe('GET /templates', () => {
     assert.deepEqual(summary.cover, { imageUrl: 'https://cdn.example/seo-factory.webp?v=1', alt: 'A pen and a calendar' })
     assert.equal(summary.createdAt, '2026-10-09T10:00:00Z')
     assert.equal(summary.sizeBytes, 4096)
+    // A Template published before Knowledge Bases says it carries none.
+    assert.deepEqual(summary.counts, { agents: 2, teams: 1, workflows: 0, dataTables: 1, knowledgeBases: 0 })
     assert.ok(!('contents' in summary) && !('content' in summary))
   })
 
