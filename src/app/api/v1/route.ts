@@ -10,6 +10,10 @@ export async function GET() {
       template: '/api/v1/templates/{id}',
       templateFile: '/api/v1/templates/{id}/file',
       templateRoot: '/api/v1/templates/{id}/root',
+      // Publishing, from a workspace (a person's token from accounts_service).
+      me: '/api/v1/me',
+      myUploads: '/api/v1/me/uploads',
+      myTemplates: '/api/v1/me/templates',
     },
   })
 }

@@ -5,7 +5,8 @@ workflow, everything it calls, seed rows, a cover picture), made in the Studio a
 into Supabase. Consumed by the Studio and by the public site (Synergi).
 
 The format and this contract are described in `agentivity_service/.. /delivery/features/templates/template-format.md` (sections 2
-and 10). There is no write endpoint: the founder publishes with a script (`agentivity_marketplace_content/scripts/publish.mjs`).
+and 10). People publish from their hosted workspace (see "Publishing" below); the founder can still publish with a script
+(`agentivity_marketplace_content/scripts/publish.mjs`).
 
 ## API (v1)
 
@@ -38,6 +39,37 @@ A bad parameter is a `400` with a readable `code` (`invalid_language`, `invalid_
   "sizeBytes": 230502, "createdAt": "2026-10-09T10:00:00Z", "updatedAt": "2026-10-11T08:00:00Z" }
 ```
 
+## Publishing (from a workspace)
+
+A person of a hosted workspace publishes their Templates under the name they chose (unique in the catalogue). What they send waits
+for a moderator, unless Ops lets them publish without review; an update waits the same way while the version online stays. The
+workspace calls these routes from its server with a short token that accounts_service signs (ES256, `aud`
+`agentivity-marketplace`, `sub` = the person's id, `email`, `ws`, `trusted`, `exp`); this API checks it with
+`PUBLISH_TOKEN_PUBLIC_KEY`. Never cached, no CORS.
+
+| Endpoint | Description |
+|---|---|
+| `GET /api/v1/me` | `{ author, trusted }`: the name they publish under (null until chosen). |
+| `PUT /api/v1/me` | `{ name, url? }`: chooses or changes it. `409 name_taken` when it is someone's (or a name the catalogue had before: Ops gives those). |
+| `POST /api/v1/me/uploads` | `{ uploadId, uploadUrl }`: the workspace PUTs the file to `uploadUrl`, straight to the private bucket `template-submissions` (a Template may be larger than a function takes). |
+| `POST /api/v1/me/templates` | `{ uploadId }`: publishes it. Checked by the rules of the catalogue (`400 template_not_valid`), under the person's name, an id that is theirs (`409 id_taken`), a version above the one online (`409 version_not_newer`). Answers the sending, `pending` or `approved`. A newer sending replaces the one waiting. |
+| `GET /api/v1/me/templates` | Their Templates: `online` (version, `published` or `withdrawn`) and `lastSent` (version, status, the reason of a refusal). |
+| `POST /api/v1/me/templates/{id}/unpublish` | Takes it out of the catalogue, with what waits for review. |
+
+Moderation, for Ops (server to server, `Authorization: Bearer <MARKETPLACE_ADMIN_KEY>`, `X-Reviewer: <who decides>`):
+
+| Endpoint | Description |
+|---|---|
+| `GET /api/v1/admin/submissions?status=` | `pending` by default, oldest first, with the email and workspace of who sent it. |
+| `GET /api/v1/admin/submissions/{id}/file` | The file sent. |
+| `POST /api/v1/admin/submissions/{id}/approve` | Publishes it: the cover to `template-covers`, the row under its author's name. |
+| `POST /api/v1/admin/submissions/{id}/reject` | `{ reason }` (3 to 1000 characters): its author reads it. |
+| `POST /api/v1/admin/templates/{id}/withdraw` | Takes any Template out of the catalogue. |
+| `PUT /api/v1/admin/authors/{id}/owner` | `{ personId }`: gives an author name to a person (Agentivity Labs to its founder). |
+
+The rules a file must follow are a copy of `agentivity_marketplace_content/scripts/lib` (`src/lib/format/`); a test there checks the
+copy. The tables are created by `agentivity_marketplace_content/migrations/2026-11-template-publishing.sql` (run it first).
+
 ## Setup
 
 ```
@@ -53,5 +85,6 @@ The tables and the `template-covers` storage bucket are created by `agentivity_m
 ## Deploying
 
 Standard Next.js app (no static export: the API routes need a server), deploys as-is on Vercel. Set `SUPABASE_URL` and
-`SUPABASE_SERVICE_ROLE_KEY` as environment variables of the Vercel project (never commit `.env`). Order of the move: the migration,
+`SUPABASE_SERVICE_ROLE_KEY` as environment variables of the Vercel project (never commit `.env`), and, to open publishing,
+`PUBLISH_TOKEN_PUBLIC_KEY` and `MARKETPLACE_ADMIN_KEY`. Order of the move: the migration,
 this deployment, then the publication of the Templates.

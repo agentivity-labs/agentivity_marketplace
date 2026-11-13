@@ -24,7 +24,6 @@ export type TemplateRow = {
   root_kind: 'agent' | 'team' | 'workflow'
   root_id: string
   root_name: string
-  /** knowledgeBases is missing from the rows published before Knowledge Bases. */
   /** knowledgeBases is missing from the rows published before Knowledge Bases; solutions from those before several Solutions (one). */
   counts: { agents: number; teams: number; workflows: number; dataTables: number; knowledgeBases?: number; solutions?: number }
   requires: { credentials: string[]; plugins: string[] }
