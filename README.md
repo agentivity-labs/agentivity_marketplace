@@ -54,7 +54,7 @@ workspace calls these routes from its server with a short token that accounts_se
 | `POST /api/v1/me/uploads` | `{ uploadId, uploadUrl }`: the workspace PUTs the file to `uploadUrl`, straight to the private bucket `template-submissions` (a Template may be larger than a function takes). |
 | `POST /api/v1/me/templates` | `{ uploadId }`: publishes it. Checked by the rules of the catalogue (`400 template_not_valid`), under the person's name, an id that is theirs (`409 id_taken`), a version above the one online (`409 version_not_newer`). Answers the sending, `pending` or `approved`. A newer sending replaces the one waiting. |
 | `GET /api/v1/me/templates` | Their Templates: `online` (version, `published` or `withdrawn`) and `lastSent` (version, status, the reason of a refusal). |
-| `POST /api/v1/me/templates/{id}/unpublish` | Takes it out of the catalogue, with what waits for review. |
+| `DELETE /api/v1/me/templates/{id}` | Deletes it for good: its row, its cover, what they sent of it. Those who imported it keep their copy; its ID is free again. |
 
 Moderation, for Ops (server to server, `Authorization: Bearer <MARKETPLACE_ADMIN_KEY>`, `X-Reviewer: <who decides>`):
 

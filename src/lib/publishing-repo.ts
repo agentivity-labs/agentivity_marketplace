@@ -161,4 +161,15 @@ export const publishing: PublishingStore = {
   async setStatus(slug, status) {
     check(await supabase.from('templates').update({ status }).eq('slug', slug))
   },
+
+  async deleteTemplate(slug) {
+    // Its files first: a row without its file is worse than a file without its row.
+    const sendings = check(await supabase.from('template_submissions').select('file_path').eq('slug', slug)) ?? []
+    const files = sendings.map((s) => s.file_path).filter(Boolean)
+    if (files.length > 0) check(await supabase.storage.from(SUBMISSIONS).remove(files))
+    const covers = (check(await supabase.storage.from(COVERS).list('', { search: slug })) ?? []).map((o) => o.name).filter((name) => name.startsWith(`${slug}.`))
+    if (covers.length > 0) check(await supabase.storage.from(COVERS).remove(covers))
+    check(await supabase.from('template_submissions').delete().eq('slug', slug))
+    check(await supabase.from('templates').delete().eq('slug', slug))
+  },
 }

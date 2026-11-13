@@ -57,6 +57,8 @@ export interface PublishingStore {
   /** Writes the catalogue row of a Template, published. */
   publish(row: Record<string, unknown>): Promise<void>
   setStatus(slug: string, status: 'published' | 'withdrawn'): Promise<void>
+  /** Deletes a Template for good: its catalogue row, its cover, and every sending of it with its file. */
+  deleteTemplate(slug: string): Promise<void>
 }
 
 const error = (status: number, code: string, message: string): Result => ({ kind: 'error', status, code, message })
@@ -202,15 +204,18 @@ export async function myTemplates(store: PublishingStore, publisher: Publisher):
   )
 }
 
-/** Takes a Template of theirs out of the catalogue (what waits for review goes too). It can be published again with a new version. */
-export async function unpublish(store: PublishingStore, publisher: Publisher, slug: string, now = new Date()): Promise<Result> {
+/**
+ * Deletes a Template of theirs for good: out of the catalogue and out of their Templates, its cover and everything they sent of it.
+ * Those who imported it keep their copy. Its ID is free again.
+ */
+export async function deleteTemplate(store: PublishingStore, publisher: Publisher, slug: string): Promise<Result> {
   const author = await store.authorOfPerson(publisher.personId)
   const listed = await store.listed(slug)
-  const waiting = (await store.submissions({ slug, status: 'pending' })).filter((s) => s.personId === publisher.personId)
-  if (!author || ((!listed || listed.authorId !== author.id) && waiting.length === 0)) return error(404, 'template_not_found', `You have no Template with the id "${slug}".`)
-  for (const s of waiting) await store.updateSubmission(s.id, { status: 'withdrawn', reason: 'Withdrawn by its author.', reviewedAt: now.toISOString(), reviewedBy: null })
-  if (listed && listed.authorId === author.id && listed.status === 'published') await store.setStatus(slug, 'withdrawn')
-  return data({ id: slug, online: null })
+  const sent = await store.submissions({ slug, personId: publisher.personId })
+  const theirs = author !== null && (listed ? listed.authorId === author.id : sent.length > 0)
+  if (!theirs) return error(404, 'template_not_found', `You have no Template with the ID "${slug}".`)
+  await store.deleteTemplate(slug)
+  return data({ id: slug, deleted: true })
 }
 
 // ── The moderators (Ops) ──────────────────────────────────────────────────────────────────────────────────────────────────

@@ -15,7 +15,7 @@ import {
   rejectSubmission,
   submissionsFor,
   submit,
-  unpublish,
+  deleteTemplate,
   whoAmI,
   withdrawTemplate,
 } from '../src/lib/publishing.ts'
@@ -78,6 +78,10 @@ function memoryStore() {
     },
     async setStatus(slug, status) {
       listed.set(slug, { ...listed.get(slug)!, status })
+    },
+    async deleteTemplate(slug) {
+      listed.delete(slug)
+      for (const [id, s] of submissions) if (s.slug === slug) { submissions.delete(id); files.delete(s.filePath) }
     },
   }
   return { store, authors, listed, submissions, files, covers }
@@ -258,14 +262,17 @@ describe('a person publishes under the name they chose', () => {
     assert.equal(codeOf(await submit(world.store, anna, { uploadId: upload.uploadId })), 'upload_not_found')
   })
 
-  it('its author takes it out of the catalogue, a moderator too; nobody else', async () => {
+  it('its author deletes it for good, out of the catalogue and of their Templates; nobody else; a moderator withdraws any', async () => {
     const world = memoryStore()
     await chooseName(world.store, anna, { name: 'Anna Builds' })
     await chooseName(world.store, labs, { name: 'Agentivity Labs' })
     await approveSubmission(world.store, dataOf(await send(world, anna, template())).id, 'moderator')
-    assert.equal(codeOf(await unpublish(world.store, labs, 'service-desk')), 'template_not_found')
-    dataOf(await unpublish(world.store, anna, 'service-desk'))
-    assert.equal(world.listed.get('service-desk')!.status, 'withdrawn')
+    assert.equal(codeOf(await deleteTemplate(world.store, labs, 'service-desk')), 'template_not_found')
+    dataOf(await deleteTemplate(world.store, anna, 'service-desk'))
+    assert.equal(world.listed.has('service-desk'), false)
+    assert.deepEqual(dataOf(await myTemplates(world.store, anna)), [])
+    // Its ID is free again.
+    assert.equal(dataOf(await send(world, labs, template())).status, 'approved')
 
     world.listed.set('other', { slug: 'other', version: '1.0.0', name: 'Other', authorId: 'agentivity-labs', status: 'published' })
     dataOf(await withdrawTemplate(world.store, 'other'))
