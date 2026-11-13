@@ -25,7 +25,8 @@ export type TemplateRow = {
   root_id: string
   root_name: string
   /** knowledgeBases is missing from the rows published before Knowledge Bases. */
-  counts: { agents: number; teams: number; workflows: number; dataTables: number; knowledgeBases?: number }
+  /** knowledgeBases is missing from the rows published before Knowledge Bases; solutions from those before several Solutions (one). */
+  counts: { agents: number; teams: number; workflows: number; dataTables: number; knowledgeBases?: number; solutions?: number }
   requires: { credentials: string[]; plugins: string[] }
   size_bytes: number
   template_created_at: string | null
@@ -118,7 +119,7 @@ export function toSummary(row: TemplateRow) {
     license: row.license,
     cover: row.cover_url ? { imageUrl: row.cover_url, alt: row.cover_alt } : null,
     root: { kind: row.root_kind, id: row.root_id, name: row.root_name },
-    counts: { ...row.counts, knowledgeBases: row.counts.knowledgeBases ?? 0 },
+    counts: { ...row.counts, knowledgeBases: row.counts.knowledgeBases ?? 0, solutions: row.counts.solutions ?? 1 },
     requires: row.requires,
     sizeBytes: row.size_bytes,
     createdAt: row.template_created_at ?? row.created_at,
