@@ -8,7 +8,9 @@ import {
   type PublishingStore,
   type Submission,
   approveSubmission,
+  catalogueForModerators,
   chooseName,
+  pruneApproved,
   giveAuthor,
   myTemplates,
   newerVersion,
@@ -82,6 +84,12 @@ function memoryStore() {
     async deleteTemplate(slug) {
       listed.delete(slug)
       for (const [id, s] of submissions) if (s.slug === slug) { submissions.delete(id); files.delete(s.filePath) }
+    },
+    async deleteSubmissions(ids) {
+      for (const id of ids) { files.delete(submissions.get(id)?.filePath ?? ''); submissions.delete(id) }
+    },
+    async allListed() {
+      return [...listed.values()]
     },
   }
   return { store, authors, listed, submissions, files, covers }
@@ -285,5 +293,50 @@ describe('a person publishes under the name they chose', () => {
     assert.equal(newerVersion('1.0.0', '1.0.0-beta'), true)
     assert.equal(newerVersion('1.0.0-beta', '1.0.0'), false)
     assert.equal(newerVersion('2.0.0', '10.0.0'), false)
+  })
+})
+
+// ── Only the version online is kept ─────────────────────────────────────────────────────────────────────────────────────────
+
+describe('the versions kept', () => {
+  it('a version approved removes the approved ones before it, with their files; a refusal stays, with why', async () => {
+    const world = memoryStore()
+    await chooseName(world.store, anna, { name: 'Anna Builds' })
+    const first = dataOf(await send(world, anna, template('service-desk', '1.0.0')))
+    await approveSubmission(world.store, first.id, 'moderator')
+    const refused = dataOf(await send(world, anna, template('service-desk', '1.1.0')))
+    await rejectSubmission(world.store, refused.id, 'moderator', { reason: 'The cover shows a real company logo.' })
+    const second = dataOf(await send(world, anna, template('service-desk', '1.2.0')))
+    await approveSubmission(world.store, second.id, 'moderator')
+
+    assert.deepEqual(dataOf(await submissionsFor(world.store, 'approved')).map((s: any) => s.version), ['1.2.0'])
+    assert.equal(world.files.has(world.submissions.get(second.id)!.filePath), true)
+    assert.equal(world.submissions.has(first.id), false)
+    assert.equal(world.files.has(`${anna.personId}/${first.id}.template.json`), false)
+    assert.equal(world.submissions.get(refused.id)!.status, 'rejected')
+    assert.equal(world.listed.get('service-desk')!.version, '1.2.0')
+  })
+
+  it('the versions approved before this rule are removed at once, the one online kept', async () => {
+    const world = memoryStore()
+    await chooseName(world.store, labs, { name: 'Agentivity Labs' })
+    for (const version of ['1.0.0', '1.0.1', '1.0.2']) dataOf(await send(world, labs, template('quote-desk', version)))
+    // As it was before: three approved sendings of the same Template.
+    world.submissions.set('old-1', { ...[...world.submissions.values()][0], id: 'old-1', version: '0.9.0' })
+
+    assert.equal(dataOf(await pruneApproved(world.store)).removed, 1)
+    assert.deepEqual([...world.submissions.values()].filter((s) => s.status === 'approved').map((s) => s.version), ['1.0.2'])
+    assert.equal(dataOf(await pruneApproved(world.store)).removed, 0)
+  })
+
+  it('moderators read every Template of the catalogue, withdrawn ones too', async () => {
+    const world = memoryStore()
+    await chooseName(world.store, labs, { name: 'Agentivity Labs' })
+    dataOf(await send(world, labs, template('service-desk')))
+    dataOf(await send(world, labs, template('quote-desk')))
+    dataOf(await withdrawTemplate(world.store, 'quote-desk'))
+
+    // Both are named Service Desk here: their order is not what is checked.
+    assert.deepEqual(dataOf(await catalogueForModerators(world.store)).map((t: any) => [t.id, t.version, t.status]).sort(), [['quote-desk', '1.0.0', 'withdrawn'], ['service-desk', '1.0.0', 'published']])
   })
 })

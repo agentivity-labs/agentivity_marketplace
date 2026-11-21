@@ -59,6 +59,10 @@ export interface PublishingStore {
   setStatus(slug: string, status: 'published' | 'withdrawn'): Promise<void>
   /** Deletes a Template for good: its catalogue row, its cover, and every sending of it with its file. */
   deleteTemplate(slug: string): Promise<void>
+  /** Deletes these sendings for good, with their files. */
+  deleteSubmissions(ids: string[]): Promise<void>
+  /** Every Template of the catalogue, published or withdrawn. */
+  allListed(): Promise<Listed[]>
 }
 
 const error = (status: number, code: string, message: string): Result => ({ kind: 'error', status, code, message })
@@ -251,7 +255,33 @@ export async function approveSubmission(store: PublishingStore, id: string, revi
   const row = deriveRow(file, { coverUrl, sizeBytes: Buffer.byteLength(rawText) })
   await store.publish({ ...row, author_id: owner.author.id, status: 'published', visibility: 'public' })
   await store.updateSubmission(id, { status: 'approved', reason: null, reviewedAt: now.toISOString(), reviewedBy: reviewer })
+  // The version online is the only one kept: the catalogue serves its own copy, and an older sending approved before is history nobody reads.
+  const older = (await store.submissions({ slug: submission.slug, status: 'approved' })).filter((s) => s.id !== id)
+  if (older.length > 0) await store.deleteSubmissions(older.map((s) => s.id))
   return data(view({ ...submission, status: 'approved', reviewedAt: now.toISOString(), reviewedBy: reviewer }, await store.listed(submission.slug)))
+}
+
+/**
+ * Removes the approved sendings older than the version of each Template kept: the ones approved before a later version was (the
+ * catalogue only ever serves the last). Refused and withdrawn sendings stay, with why. Says how many were removed.
+ */
+export async function pruneApproved(store: PublishingStore): Promise<Result> {
+  const approved = await store.submissions({ status: 'approved' })
+  const gone: string[] = []
+  for (const slug of new Set(approved.map((s) => s.slug))) {
+    const ofIt = approved.filter((s) => s.slug === slug)
+    const online = (await store.listed(slug))?.version
+    const kept = ofIt.find((s) => s.version === online) ?? ofIt.reduce((a, b) => (newerVersion(b.version, a.version) ? b : a))
+    gone.push(...ofIt.filter((s) => s.id !== kept.id).map((s) => s.id))
+  }
+  if (gone.length > 0) await store.deleteSubmissions(gone)
+  return data({ removed: gone.length })
+}
+
+/** Every Template of the catalogue, for moderators: published or withdrawn, by name. */
+export async function catalogueForModerators(store: PublishingStore): Promise<Result> {
+  const all = await store.allListed()
+  return data(all.sort((a, b) => a.name.localeCompare(b.name)).map((t) => ({ id: t.slug, name: t.name, version: t.version, authorId: t.authorId, status: t.status })))
 }
 
 /** Refuses a sending, saying why: its author reads the reason in their workspace. */

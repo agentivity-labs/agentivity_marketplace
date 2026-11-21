@@ -162,6 +162,18 @@ export const publishing: PublishingStore = {
     check(await supabase.from('templates').update({ status }).eq('slug', slug))
   },
 
+  async deleteSubmissions(ids) {
+    if (ids.length === 0) return
+    const files = ((check(await supabase.from('template_submissions').select('file_path').in('id', ids)) ?? []) as { file_path: string | null }[]).map((s) => s.file_path).filter((f): f is string => !!f)
+    if (files.length > 0) check(await supabase.storage.from(SUBMISSIONS).remove(files))
+    check(await supabase.from('template_submissions').delete().in('id', ids))
+  },
+
+  async allListed() {
+    const rows = check(await supabase.from('templates').select('slug, version, name, author_id, status')) ?? []
+    return rows.map((row) => ({ slug: row.slug, version: row.version, name: row.name, authorId: row.author_id, status: row.status === 'withdrawn' ? 'withdrawn' : 'published' }) as Listed)
+  },
+
   async deleteTemplate(slug) {
     // Its files first: a row without its file is worse than a file without its row.
     const sendings = check(await supabase.from('template_submissions').select('file_path').eq('slug', slug)) ?? []
